@@ -107,6 +107,8 @@ This binds Postgres to **`127.0.0.1:5432`** on the host. It does **not** replace
 
 ## 4. Nginx reverse proxy + TLS (os.uppcore.tech)
 
+**Multi-site VPS:** if `os.uppcore.tech` returns **502** but `curl http://127.0.0.1:5858/login` is **200**, check `/var/log/nginx/error.log`: if `server:` is **not** `os.uppcore.tech` (e.g. `hr.uppcore.tech`) while `host:` is `os.uppcore.tech`, you are missing a **`listen 443 ssl` + `server_name os.uppcore.tech`** block. See **[NGINX-OS-UPPCORE.md](./NGINX-OS-UPPCORE.md)**.
+
 1. Install Nginx and Certbot on the VPS (Debian/Ubuntu example):
 
    ```bash
