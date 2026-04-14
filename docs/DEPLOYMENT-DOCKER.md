@@ -93,9 +93,11 @@ docker compose logs -f web
 Only if you want the **extra** Postgres service from this compose file (see `docker-compose.yml`):
 
 ```bash
-export POSTGRES_PASSWORD='a-long-random-password'
+# Set a strong password in .env.production, then:
 docker compose --profile db up -d
 ```
+
+`POSTGRES_PASSWORD` defaults to a placeholder so **`docker compose up`** (web only) never fails; override it before enabling the `db` profile in production.
 
 This binds Postgres to **`127.0.0.1:5432`** on the host. It does **not** replace Supabase for the app unless you integrate it yourself.
 

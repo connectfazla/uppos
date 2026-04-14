@@ -31,7 +31,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-uppos}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env or shell}
+      # Default only so `docker compose up` works without this var. If you use `--profile db`, set POSTGRES_PASSWORD in .env.production.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-unused_local_postgres_password}
       POSTGRES_DB: ${POSTGRES_DB:-uppos}
     volumes:
       - pgdata:/var/lib/postgresql/data
