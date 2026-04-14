@@ -10,16 +10,18 @@
 
 ## Tech stack
 
-| Layer | Choice |
-|--------|--------|
-| Framework | [Next.js 14](https://nextjs.org/) (App Router) |
-| UI | [shadcn/ui](https://ui.shadcn.com/) (New York style) — `components.json`, Radix primitives, `tailwindcss-animate`, CSS variables in `src/app/globals.css` |
-| Styling | [Tailwind CSS 3](https://tailwindcss.com/) |
-| Charts | [Recharts](https://recharts.org/) |
-| Data / cache | [TanStack Query](https://tanstack.com/query) |
-| Optional state | [Zustand](https://github.com/pmndrs/zustand) (installed; extend as needed) |
-| Database & auth | [Supabase](https://supabase.com/) — PostgreSQL, Auth, Storage |
-| Validation | [Zod](https://zod.dev/) |
+
+| Layer           | Choice                                                                                                                                                    |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Framework       | [Next.js 14](https://nextjs.org/) (App Router)                                                                                                            |
+| UI              | [shadcn/ui](https://ui.shadcn.com/) (New York style) — `components.json`, Radix primitives, `tailwindcss-animate`, CSS variables in `src/app/globals.css` |
+| Styling         | [Tailwind CSS 3](https://tailwindcss.com/)                                                                                                                |
+| Charts          | [Recharts](https://recharts.org/)                                                                                                                         |
+| Data / cache    | [TanStack Query](https://tanstack.com/query)                                                                                                              |
+| Optional state  | [Zustand](https://github.com/pmndrs/zustand) (installed; extend as needed)                                                                                |
+| Database & auth | [Supabase](https://supabase.com/) — PostgreSQL, Auth, Storage                                                                                             |
+| Validation      | [Zod](https://zod.dev/)                                                                                                                                   |
+
 
 ---
 
@@ -34,35 +36,47 @@
 
 Copy `.env.example` to `.env.local` and set:
 
-| Variable | Purpose |
-|----------|---------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon (public) key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Optional — only for trusted server scripts (not required for the shipped API routes) |
+
+| Variable                        | Purpose                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL                                                                 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon (public) key                                                           |
+| `SUPABASE_SERVICE_ROLE_KEY`     | Optional — only for trusted server scripts (not required for the shipped API routes) |
+
 
 ---
 
 ## Database setup (Supabase)
 
 1. In the Supabase SQL editor, run migrations **in order**:
-   - `supabase/migrations/001_uppearance_os.sql` — core schema, RLS, auth → `profiles` trigger, `contracts` storage policies.
-   - `supabase/migrations/002_profiles_staff_update.sql` — allows **admin/team** to update `profiles` (e.g. link a user to a `client_id` for the portal).
-
-2. Confirm the **`contracts`** storage bucket exists (the migration inserts it; verify under Storage).
-
+  - `supabase/migrations/001_uppearance_os.sql` — core schema, RLS, auth → `profiles` trigger, `contracts` storage policies.
+  - `supabase/migrations/002_profiles_staff_update.sql` — allows **admin/team** to update `profiles` (e.g. link a user to a `client_id` for the portal).
+2. Confirm the `**contracts`** storage bucket exists (the migration inserts it; verify under Storage).
 3. **Roles** (`profiles.role`): `admin`, `team`, `client`. New sign-ups default to `team` via the trigger. Promote users as needed, for example:
-
-   ```sql
+  ```sql
    update public.profiles set role = 'admin' where id = '<auth user uuid>';
-   ```
-
+  ```
 4. **Portal users:** set the client organization and role:
-
-   ```sql
+  ```sql
    update public.profiles
    set role = 'client', client_id = '<clients.id uuid>'
    where id = '<auth user uuid>';
-   ```
+  ```
+
+---
+
+## Docker / VPS (os.uppcore.tech, port 5858)
+
+Full steps: **[docs/DEPLOYMENT-DOCKER.md](docs/DEPLOYMENT-DOCKER.md)** — Docker Compose, Nginx + TLS, Supabase Cloud vs self-hosted Postgres, firewall, and updates.
+
+Quick start on the server:
+
+```bash
+cp .env.production.example .env.production
+# edit .env.production — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+docker compose up -d --build
+# app: http://SERVER_IP:5858  →  put Nginx in front for https://os.uppcore.tech (see deploy/nginx-os.uppcore.tech.conf)
+```
 
 ---
 
@@ -75,8 +89,8 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). Unauthenticated users should use `/login`.
 
-- **Staff** (`admin` / `team`): redirected to **`/dashboard`** (sidebar: Dashboard, Clients, Retainers, Invoices, Contracts).
-- **Clients** (`client` with `client_id`): redirected to **`/portal`**.
+- **Staff** (`admin` / `team`): redirected to `**/dashboard`** (sidebar: Dashboard, Clients, Retainers, Invoices, Contracts).
+- **Clients** (`client` with `client_id`): redirected to `**/portal`**.
 
 Other scripts:
 
@@ -92,7 +106,7 @@ npm run lint    # ESLint
 
 This repo is configured for **shadcn/ui**:
 
-- **`components.json`** — style `new-york`, RSC, Tailwind + CSS variables, aliases `@/components`, `@/lib/utils`, etc.
+- `**components.json`** — style `new-york`, RSC, Tailwind + CSS variables, aliases `@/components`, `@/lib/utils`, etc.
 - **Primitives** live under `src/components/ui/` (Button, Card, Input, Label, Badge, Separator, Sheet, Table, Select, Tabs, Textarea, Sonner).
 
 To add more components (when the registry is reachable):
@@ -107,19 +121,21 @@ If the CLI times out, you can paste components from [ui.shadcn.com](https://ui.s
 
 ## API routes (summary)
 
-| Method | Path | Notes |
-|--------|------|--------|
-| GET, POST | `/api/clients` | Staff |
-| PATCH | `/api/clients/[id]` | Staff (optional `archived`) |
-| GET, POST | `/api/contacts` | Staff |
-| GET, POST | `/api/retainers` | Staff; nested deliverables on create |
-| PATCH | `/api/retainers/[id]` | Staff |
-| GET, POST | `/api/invoices` | GET: staff + client (scoped); syncs overdue/paid state |
-| PATCH | `/api/invoices/[id]` | Staff |
-| POST | `/api/payments` | Staff; updates invoice balance / status |
-| GET, POST | `/api/contracts` | Staff; POST = multipart PDF upload |
-| GET | `/api/dashboard/metrics` | Staff dashboard aggregates |
-| GET | `/api/client/dashboard` | Client portal payload (403 if not linked to a client) |
+
+| Method    | Path                     | Notes                                                  |
+| --------- | ------------------------ | ------------------------------------------------------ |
+| GET, POST | `/api/clients`           | Staff                                                  |
+| PATCH     | `/api/clients/[id]`      | Staff (optional `archived`)                            |
+| GET, POST | `/api/contacts`          | Staff                                                  |
+| GET, POST | `/api/retainers`         | Staff; nested deliverables on create                   |
+| PATCH     | `/api/retainers/[id]`    | Staff                                                  |
+| GET, POST | `/api/invoices`          | GET: staff + client (scoped); syncs overdue/paid state |
+| PATCH     | `/api/invoices/[id]`     | Staff                                                  |
+| POST      | `/api/payments`          | Staff; updates invoice balance / status                |
+| GET, POST | `/api/contracts`         | Staff; POST = multipart PDF upload                     |
+| GET       | `/api/dashboard/metrics` | Staff dashboard aggregates                             |
+| GET       | `/api/client/dashboard`  | Client portal payload (403 if not linked to a client)  |
+
 
 **Invoices:** `invoice_link` must be an `http(s)` URL (e.g. Google Doc). No PDF/HTML invoice generation in-app.
 
