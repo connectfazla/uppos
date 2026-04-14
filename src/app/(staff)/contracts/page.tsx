@@ -74,7 +74,7 @@ export default function ContractsPage() {
       setSignedDate("");
       qc.invalidateQueries({ queryKey: ["contracts"] });
     },
-    onError: () => toast.error("Upload failed — check Storage bucket and RLS."),
+    onError: () => toast.error("Upload failed — check server disk space and CONTRACTS_DIR permissions."),
   });
 
   return (
@@ -82,7 +82,7 @@ export default function ContractsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Contracts</h1>
-          <p className="text-sm text-muted-foreground">PDFs in Supabase Storage, linked to clients and retainers.</p>
+          <p className="text-sm text-muted-foreground">PDFs stored on the server, linked to clients and retainers.</p>
         </div>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
@@ -138,7 +138,7 @@ export default function ContractsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Library</CardTitle>
-          <CardDescription>Open stored file URL (signed when uploaded).</CardDescription>
+          <CardDescription>Open files via secure links (staff and portal users).</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>

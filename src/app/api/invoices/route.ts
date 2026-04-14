@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireStaff, requireUser } from "@/lib/api-helpers";
 import { isStaffRole } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { invoiceStatusFromApi } from "@/lib/prisma-enums";
 import { syncInvoiceStatuses } from "@/lib/invoice-sync";
+import { serializeInvoice } from "@/lib/serializers";
 
 const createSchema = z.object({
   client_id: z.string().uuid(),
@@ -17,18 +20,22 @@ const createSchema = z.object({
 export async function GET(request: Request) {
   const ctx = await requireUser();
   if ("error" in ctx) return ctx.error;
-  await syncInvoiceStatuses(ctx.supabase);
+  await syncInvoiceStatuses();
+
   const clientId = new URL(request.url).searchParams.get("client_id");
-  let q = ctx.supabase.from("invoices").select("*").order("due_date", { ascending: true });
+  const where: { clientId?: string } = {};
   if (!isStaffRole(ctx.profile.role)) {
     if (!ctx.profile.client_id) return NextResponse.json({ invoices: [] });
-    q = q.eq("client_id", ctx.profile.client_id);
+    where.clientId = ctx.profile.client_id;
   } else if (clientId) {
-    q = q.eq("client_id", clientId);
+    where.clientId = clientId;
   }
-  const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ invoices: data });
+
+  const rows = await prisma.invoice.findMany({
+    where,
+    orderBy: { dueDate: "asc" },
+  });
+  return NextResponse.json({ invoices: rows.map(serializeInvoice) });
 }
 
 export async function POST(request: Request) {
@@ -37,7 +44,19 @@ export async function POST(request: Request) {
   const json = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(json);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const { data, error } = await ctx.supabase.from("invoices").insert(parsed.data).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ invoice: data });
+
+  const created = await prisma.invoice.create({
+    data: {
+      clientId: parsed.data.client_id,
+      retainerId: parsed.data.retainer_id ?? null,
+      amount: parsed.data.amount,
+      dueDate: new Date(parsed.data.due_date),
+      status: parsed.data.status ? invoiceStatusFromApi(parsed.data.status) : undefined,
+      invoiceLink: parsed.data.invoice_link,
+      notes: parsed.data.notes ?? null,
+    },
+  });
+  await syncInvoiceStatuses();
+  const fresh = await prisma.invoice.findUniqueOrThrow({ where: { id: created.id } });
+  return NextResponse.json({ invoice: serializeInvoice(fresh) });
 }

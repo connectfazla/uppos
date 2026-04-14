@@ -62,7 +62,7 @@ export default function PortalPage() {
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-        Unable to load portal. Ensure your profile has a linked client_id (set in Supabase).
+        Unable to load portal. Your user account must have a linked client organization (client_id) in the database.
       </div>
     );
   }

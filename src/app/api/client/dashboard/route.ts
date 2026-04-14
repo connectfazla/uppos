@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
+import { RetainerStatus } from "@prisma/client";
 import { requireUser } from "@/lib/api-helpers";
 import { isStaffRole } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { syncInvoiceStatuses } from "@/lib/invoice-sync";
+import {
+  serializeClient,
+  serializeContract,
+  serializeInvoice,
+  serializePayment,
+  serializeRetainer,
+} from "@/lib/serializers";
 
 export async function GET() {
   const ctx = await requireUser();
@@ -13,39 +22,47 @@ export async function GET() {
     return NextResponse.json({ error: "Client profile is not linked to an organization" }, { status: 403 });
   }
   const cid = ctx.profile.client_id;
-  await syncInvoiceStatuses(ctx.supabase);
+  await syncInvoiceStatuses();
 
-  const { data: client } = await ctx.supabase.from("clients").select("*").eq("id", cid).single();
-  const { data: retainers } = await ctx.supabase
-    .from("retainers")
-    .select("*, retainer_deliverables(*)")
-    .eq("client_id", cid)
-    .eq("status", "active");
-  const { data: contracts } = await ctx.supabase.from("contracts").select("*").eq("client_id", cid).order("created_at", { ascending: false });
-  const { data: invoices } = await ctx.supabase.from("invoices").select("*").eq("client_id", cid).order("due_date", { ascending: true });
-  const invoiceIds = (invoices ?? []).map((i) => i.id);
-  let payments: unknown[] = [];
-  if (invoiceIds.length) {
-    const { data: p } = await ctx.supabase.from("payments").select("*").in("invoice_id", invoiceIds);
-    payments = p ?? [];
-  }
+  const client = await prisma.client.findUnique({ where: { id: cid } });
+  if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
-  const monthlyTotal = (retainers ?? []).reduce((s, r) => s + Number(r.monthly_fee), 0);
-  const nextRenewal = (retainers ?? [])
-    .map((r) => r.renewal_date)
-    .filter(Boolean)
+  const retainers = await prisma.retainer.findMany({
+    where: { clientId: cid, status: RetainerStatus.ACTIVE },
+    include: { deliverables: true },
+  });
+  const contracts = await prisma.contract.findMany({
+    where: { clientId: cid },
+    orderBy: { createdAt: "desc" },
+  });
+  const invoices = await prisma.invoice.findMany({
+    where: { clientId: cid },
+    orderBy: { dueDate: "asc" },
+  });
+  const invoiceIds = invoices.map((i) => i.id);
+  const payments =
+    invoiceIds.length === 0
+      ? []
+      : await prisma.payment.findMany({
+          where: { invoiceId: { in: invoiceIds } },
+          orderBy: { paymentDate: "desc" },
+        });
+
+  const monthlyTotal = retainers.reduce((s, r) => s + Number(r.monthlyFee), 0);
+  const nextRenewalDate = retainers
+    .map((r) => r.renewalDate.toISOString().slice(0, 10))
     .sort()[0];
 
   return NextResponse.json({
-    client,
+    client: serializeClient(client),
     overview: {
-      activeRetainers: retainers ?? [],
+      activeRetainers: retainers.map(serializeRetainer),
       monthlyTotal,
-      nextRenewalDate: nextRenewal ?? null,
+      nextRenewalDate: nextRenewalDate ?? null,
     },
-    retainers: retainers ?? [],
-    contracts: contracts ?? [],
-    invoices: invoices ?? [],
-    payments,
+    retainers: retainers.map(serializeRetainer),
+    contracts: contracts.map(serializeContract),
+    invoices: invoices.map(serializeInvoice),
+    payments: payments.map(serializePayment),
   });
 }

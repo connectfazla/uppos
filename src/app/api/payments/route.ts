@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireStaff } from "@/lib/api-helpers";
-import { deriveInvoiceStatus } from "@/lib/invoices";
+import { prisma } from "@/lib/prisma";
 import { syncInvoiceStatuses } from "@/lib/invoice-sync";
+import { serializePayment } from "@/lib/serializers";
 
 const schema = z.object({
   invoice_id: z.string().uuid(),
@@ -18,23 +19,17 @@ export async function POST(request: Request) {
   const json = await request.json().catch(() => null);
   const parsed = schema.safeParse(json);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const { data: payment, error } = await ctx.supabase.from("payments").insert(parsed.data).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const { data: invoice } = await ctx.supabase.from("invoices").select("id, amount, due_date").eq("id", parsed.data.invoice_id).single();
-  if (invoice) {
-    const { data: sums } = await ctx.supabase.from("payments").select("amount_paid").eq("invoice_id", invoice.id);
-    const totalPaid = (sums ?? []).reduce((acc, row) => acc + Number(row.amount_paid), 0);
-    const status = deriveInvoiceStatus({
-      amount: Number(invoice.amount),
-      totalPaid,
-      dueDate: invoice.due_date,
-    });
-    await ctx.supabase
-      .from("invoices")
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq("id", invoice.id);
-  }
-  await syncInvoiceStatuses(ctx.supabase);
-  return NextResponse.json({ payment });
+  const payment = await prisma.payment.create({
+    data: {
+      invoiceId: parsed.data.invoice_id,
+      amountPaid: parsed.data.amount_paid,
+      paymentDate: new Date(parsed.data.payment_date),
+      method: parsed.data.method,
+      referenceNote: parsed.data.reference_note ?? null,
+    },
+  });
+  await syncInvoiceStatuses();
+  const fresh = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+  return NextResponse.json({ payment: serializePayment(fresh) });
 }

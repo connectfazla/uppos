@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireStaff } from "@/lib/api-helpers";
+import { prisma } from "@/lib/prisma";
+import { retainerStatusFromApi } from "@/lib/prisma-enums";
+import { serializeRetainer } from "@/lib/serializers";
 
 const deliverableSchema = z.object({
   platform: z.string().min(1),
@@ -24,14 +27,12 @@ export async function GET(request: Request) {
   const ctx = await requireStaff();
   if ("error" in ctx) return ctx.error;
   const clientId = new URL(request.url).searchParams.get("client_id");
-  let q = ctx.supabase
-    .from("retainers")
-    .select("*, retainer_deliverables(*)")
-    .order("created_at", { ascending: false });
-  if (clientId) q = q.eq("client_id", clientId);
-  const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ retainers: data });
+  const rows = await prisma.retainer.findMany({
+    where: clientId ? { clientId } : {},
+    include: { deliverables: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return NextResponse.json({ retainers: rows.map(serializeRetainer) });
 }
 
 export async function POST(request: Request) {
@@ -40,14 +41,36 @@ export async function POST(request: Request) {
   const json = await request.json().catch(() => null);
   const parsed = createSchema.safeParse(json);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const { deliverables, ...retainer } = parsed.data;
-  const { data: created, error } = await ctx.supabase.from("retainers").insert(retainer).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (deliverables?.length) {
-    const rows = deliverables.map((d) => ({ ...d, retainer_id: created.id }));
-    const { error: dErr } = await ctx.supabase.from("retainer_deliverables").insert(rows);
-    if (dErr) return NextResponse.json({ error: dErr.message }, { status: 500 });
-  }
-  const { data: full } = await ctx.supabase.from("retainers").select("*, retainer_deliverables(*)").eq("id", created.id).single();
-  return NextResponse.json({ retainer: full });
+  const { deliverables, ...r } = parsed.data;
+
+  const full = await prisma.$transaction(async (tx) => {
+    const created = await tx.retainer.create({
+      data: {
+        clientId: r.client_id,
+        name: r.name,
+        monthlyFee: r.monthly_fee,
+        startDate: new Date(r.start_date),
+        renewalDate: new Date(r.renewal_date),
+        billingCycle: r.billing_cycle,
+        status: retainerStatusFromApi(r.status),
+      },
+    });
+    if (deliverables?.length) {
+      await tx.retainerDeliverable.createMany({
+        data: deliverables.map((d) => ({
+          retainerId: created.id,
+          platform: d.platform,
+          numberOfPosts: d.number_of_posts,
+          campaigns: d.campaigns,
+          notes: d.notes ?? null,
+        })),
+      });
+    }
+    return tx.retainer.findUniqueOrThrow({
+      where: { id: created.id },
+      include: { deliverables: true },
+    });
+  });
+
+  return NextResponse.json({ retainer: serializeRetainer(full) });
 }

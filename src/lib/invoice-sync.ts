@@ -1,22 +1,36 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { InvoiceStatus } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { deriveInvoiceStatus } from "@/lib/invoices";
 
-export async function syncInvoiceStatuses(supabase: SupabaseClient) {
-  const { data: invoices, error } = await supabase.from("invoices").select("id, amount, due_date");
-  if (error || !invoices?.length) return;
-  const { data: payments } = await supabase.from("payments").select("invoice_id, amount_paid");
-  const paidByInvoice = new Map<string, number>();
-  (payments ?? []).forEach((p) => {
-    const cur = paidByInvoice.get(p.invoice_id) ?? 0;
-    paidByInvoice.set(p.invoice_id, cur + Number(p.amount_paid));
+function toPrismaInvoiceStatus(s: "paid" | "unpaid" | "overdue"): InvoiceStatus {
+  if (s === "paid") return InvoiceStatus.PAID;
+  if (s === "overdue") return InvoiceStatus.OVERDUE;
+  return InvoiceStatus.UNPAID;
+}
+
+export async function syncInvoiceStatuses() {
+  const invoices = await prisma.invoice.findMany({
+    select: { id: true, amount: true, dueDate: true },
   });
+  if (!invoices.length) return;
+  const payments = await prisma.payment.findMany({
+    select: { invoiceId: true, amountPaid: true },
+  });
+  const paidByInvoice = new Map<string, number>();
+  for (const p of payments) {
+    const cur = paidByInvoice.get(p.invoiceId) ?? 0;
+    paidByInvoice.set(p.invoiceId, cur + Number(p.amountPaid));
+  }
   for (const inv of invoices) {
     const totalPaid = paidByInvoice.get(inv.id) ?? 0;
     const next = deriveInvoiceStatus({
       amount: Number(inv.amount),
       totalPaid,
-      dueDate: inv.due_date,
+      dueDate: inv.dueDate.toISOString().slice(0, 10),
     });
-    await supabase.from("invoices").update({ status: next, updated_at: new Date().toISOString() }).eq("id", inv.id);
+    await prisma.invoice.update({
+      where: { id: inv.id },
+      data: { status: toPrismaInvoiceStatus(next) },
+    });
   }
 }

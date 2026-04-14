@@ -18,6 +18,7 @@ export type Client = {
   company_name: string;
   status: ClientStatus;
   assigned_manager: string | null;
+  notes: string | null;
   created_at: string;
   archived_at: string | null;
 };

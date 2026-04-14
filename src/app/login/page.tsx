@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,16 +19,19 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        toast.error(error.message);
+      const res = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+      if (res?.error) {
+        toast.error("Invalid email or password.");
         return;
       }
       router.replace("/");
       router.refresh();
     } catch {
-      toast.error("Sign-in failed. Confirm Supabase environment variables are set.");
+      toast.error("Sign-in failed. Check DATABASE_URL and NextAuth configuration.");
     } finally {
       setLoading(false);
     }
@@ -39,7 +42,9 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Uppearance OS</CardTitle>
-          <CardDescription>Sign in with your Supabase account. Staff use the operations dashboard; clients use the portal.</CardDescription>
+          <CardDescription>
+            Sign in with your account. Staff use the operations dashboard; clients use the portal.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">

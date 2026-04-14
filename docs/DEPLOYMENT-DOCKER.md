@@ -4,27 +4,24 @@ This guide covers:
 
 1. Running the **Next.js** app in Docker, published on host port **5858**.
 2. Putting it behind **Nginx** with TLS at **https://os.uppcore.tech**.
-3. Where **PostgreSQL** fits in: the app talks to **Supabase** (Postgres + Auth + Storage APIs), not raw `pg` from Node. Your “Postgres in Docker” options are spelled out below.
+3. How **PostgreSQL** fits in: the app uses **Prisma** against a normal Postgres database and **NextAuth.js** for sign-in. Contract PDFs are stored on the **filesystem** (`CONTRACTS_DIR` / `./data/contracts`).
 
 ---
 
 ## How the database works
 
-Uppearance OS uses **`@supabase/supabase-js`** and **`@supabase/ssr`** for:
-
-- Authentication (GoTrue)
-- Row Level Security on Postgres (via PostgREST)
-- Storage (contract PDFs)
-
-So you need a **Supabase API endpoint**, not only a Postgres container. You can:
-
 | Approach | Postgres location | Good for |
 |----------|-------------------|----------|
-| **A. Supabase Cloud** | Hosted by Supabase | Fastest: create a project, run SQL migrations in the dashboard, point env vars at the project URL. |
-| **B. Self-hosted Supabase (Docker)** | Postgres **in Docker** on your VPS (or another server) as part of the official stack | Full control, DB stays on your machines. |
-| **C. Optional `postgres` service** in this repo’s `docker-compose.yml` | Standalone Postgres with profile `db` | Backups, tooling, or experiments; **not** wired to the Next app until you add your own integration. |
+| **Managed Postgres** (RDS, Neon, VPS `postgresql` package, etc.) | Wherever you host it | Production: set `DATABASE_URL` in `.env.production`. |
+| **Optional `postgres` service** in `docker-compose.yml` | Docker on the same host (`--profile db`) | Local experiments or a single-node stack; set `DATABASE_URL` to reach that container from `web`. |
 
-For production at **os.uppcore.tech**, **A** or **B** is what you want for the live app.
+Before starting the app, run **Prisma migrations** against the same database (from CI or any machine with Node):
+
+```bash
+export DATABASE_URL="postgresql://..."
+npx prisma migrate deploy
+npm run db:seed   # optional — set SEED_ADMIN_PASSWORD in production first
+```
 
 ---
 
@@ -43,31 +40,14 @@ For production at **os.uppcore.tech**, **A** or **B** is what you want for the l
 git clone https://github.com/connectfazla/uppos.git
 cd uppos
 cp .env.production.example .env.production
-nano .env.production   # fill NEXT_PUBLIC_SUPABASE_* (and optional NEXT_PUBLIC_SITE_URL)
+nano .env.production   # DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL; optional CONTRACTS_DIR
 ```
-
-### If you use Supabase Cloud
-
-1. Create a project at [supabase.com](https://supabase.com).
-2. **SQL Editor** → run `supabase/migrations/001_uppearance_os.sql` then `002_profiles_staff_update.sql`.
-3. **Storage** → confirm bucket **`contracts`** exists (migration inserts it).
-4. **Project Settings → API** → copy **URL** and **anon public** key into `.env.production`.
-
-### If you use self-hosted Supabase (Postgres in Docker)
-
-1. Follow the official guide: [Self-hosting with Docker](https://supabase.com/docs/guides/self-hosting/docker).
-2. After the stack is healthy, run the same SQL migration files against the **Postgres** instance that stack uses (often via Studio SQL or `psql`).
-3. Set `NEXT_PUBLIC_SUPABASE_URL` to your **Kong / API URL** (as documented by that compose stack, often `https://api.yourdomain.com` or internal URL + reverse proxy).
-4. Set `NEXT_PUBLIC_SUPABASE_ANON_KEY` from that stack’s generated anon key.
 
 ---
 
-## 2. Supabase Auth redirect URL
+## 2. NextAuth URLs
 
-In Supabase (**Authentication → URL configuration**), add:
-
-- **Site URL:** `https://os.uppcore.tech`
-- **Redirect URLs:** `https://os.uppcore.tech/**` (and `http://localhost:3000/**` for local dev if needed)
+Set `NEXTAUTH_URL` to your public origin (for example `https://os.uppcore.tech`). Generate a long random `NEXTAUTH_SECRET` and keep it stable across deploys so existing sessions remain valid.
 
 ---
 
@@ -101,7 +81,7 @@ docker compose --profile db up -d
 
 `POSTGRES_PASSWORD` defaults to a placeholder so **`docker compose up`** (web only) never fails; override it before enabling the `db` profile in production.
 
-This binds Postgres to **`127.0.0.1:5432`** on the host. It does **not** replace Supabase for the app unless you integrate it yourself.
+This binds Postgres to **`127.0.0.1:5432`** on the host. Point `DATABASE_URL` at it from the `web` service if you want the app and DB in one Compose stack (for example `postgresql://uppos:PASSWORD@postgres:5432/uppos` on the internal Docker network).
 
 ---
 
@@ -166,8 +146,8 @@ docker compose up -d
 | Issue | What to check |
 |--------|----------------|
 | **502 Bad Gateway** | See **502 checklist** below. |
-| Auth / session errors | Supabase URL and anon key; redirect URLs include `https://os.uppcore.tech`. |
-| Storage upload fails | RLS policies; bucket `contracts`; service role only if your API uses it. |
+| Auth / session errors | `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, and cookies reaching the browser over HTTPS. |
+| Contract upload fails | Disk space, `CONTRACTS_DIR` permissions, and writable volume if you mount one. |
 | Build fails on VPS | Prefer building on CI or a dev machine with Node 20, then `docker save` / registry push — or ensure enough RAM for `npm install` + `next build`. |
 
 ### 502 Bad Gateway (Nginx → Docker)
@@ -197,5 +177,5 @@ sudo tail -40 /var/log/nginx/error.log
 
 - **Docker Compose** publishes the app on **host port 5858** → container **3000**.
 - **https://os.uppcore.tech** → Nginx → **127.0.0.1:5858**.
-- **PostgreSQL for the product data** lives behind **Supabase** (cloud or self-hosted Docker). Run the SQL migrations there.
-- The optional **`postgres` + `--profile db`** service is extra Dockerized Postgres for your own ops; it is not a drop-in replacement for Supabase without further work.
+- **PostgreSQL** holds all product data; apply **`prisma/migrations`** with `npx prisma migrate deploy` before or after each deploy.
+- The optional **`postgres` + `--profile db`** service is a convenient Postgres container; wire `DATABASE_URL` to it or to any external Postgres instance.

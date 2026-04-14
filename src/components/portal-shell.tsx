@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getProfile, isStaffRole } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { signOut } from "@/app/actions/auth";
+import { SignOutButton } from "@/components/sign-out-button";
 
 export async function PortalShell({ children }: { children: React.ReactNode }) {
   const profile = await getProfile();
@@ -21,11 +21,7 @@ export async function PortalShell({ children }: { children: React.ReactNode }) {
             <Button variant="ghost" size="sm" asChild>
               <Link href="/portal">Overview</Link>
             </Button>
-            <form action={signOut}>
-              <Button type="submit" variant="outline" size="sm">
-                Sign out
-              </Button>
-            </form>
+            <SignOutButton variant="outline" size="sm" />
           </div>
         </div>
       </header>

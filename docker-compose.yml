@@ -1,10 +1,9 @@
 # Uppearance OS — Docker VPS
 # App listens on host port 5858 → container 3000
 #
-# Database: this app uses the Supabase client (Auth + Postgres + RLS + Storage APIs).
-# Use either Supabase Cloud, OR self-hosted Supabase Docker (includes PostgreSQL).
-# Optional `postgres` profile below is a standalone Postgres for backups / tooling,
-# or wire it yourself — the Next.js container does not set DATABASE_URL by default.
+# Database: Prisma + PostgreSQL (DATABASE_URL in .env.production).
+# Optional `postgres` service (profile `db`) — set DATABASE_URL to postgresql://...@postgres:5432/...
+# if you run the DB in this compose stack.
 
 services:
   web:
@@ -17,13 +16,15 @@ services:
       - .env.production
     environment:
       NODE_ENV: production
+    volumes:
+      - contract_uploads:/app/data/contracts
     restart: unless-stopped
     networks:
       - uppos
 
   # Optional: PostgreSQL in Docker (profile `db`). Not connected to the app automatically.
   # Apply migrations with: docker compose --profile db run --rm postgres ... psql
-  # For production DB backing Supabase features, prefer https://supabase.com/docs/guides/self-hosting/docker
+  # For production, set a strong POSTGRES_PASSWORD when using this profile.
   postgres:
     profiles:
       - db
@@ -52,3 +53,4 @@ networks:
 
 volumes:
   pgdata:
+  contract_uploads:

@@ -1,6 +1,11 @@
+import path from "path";
+import fs from "fs/promises";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireStaff } from "@/lib/api-helpers";
+import { ensureContractsRoot } from "@/lib/contracts-storage";
+import { prisma } from "@/lib/prisma";
+import { serializeContract } from "@/lib/serializers";
 
 const fieldSchema = z.object({
   client_id: z.string().uuid(),
@@ -13,11 +18,17 @@ export async function GET(request: Request) {
   const ctx = await requireStaff();
   if ("error" in ctx) return ctx.error;
   const clientId = new URL(request.url).searchParams.get("client_id");
-  let q = ctx.supabase.from("contracts").select("*, clients(company_name), retainers(name)").order("created_at", { ascending: false });
-  if (clientId) q = q.eq("client_id", clientId);
-  const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ contracts: data });
+  const rows = await prisma.contract.findMany({
+    where: clientId ? { clientId } : {},
+    include: { client: true, retainer: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const contracts = rows.map((c) => ({
+    ...serializeContract(c),
+    clients: { company_name: c.client.companyName },
+    retainers: c.retainer ? { name: c.retainer.name } : null,
+  }));
+  return NextResponse.json({ contracts });
 }
 
 export async function POST(request: Request) {
@@ -36,29 +47,32 @@ export async function POST(request: Request) {
   });
   if (!meta.success) return NextResponse.json({ error: meta.error.flatten() }, { status: 400 });
 
-  const path = `${meta.data.client_id}/${crypto.randomUUID()}-${file.name.replace(/\s+/g, "_")}`;
+  const root = await ensureContractsRoot();
+  const rel = path.join(meta.data.client_id, `${crypto.randomUUID()}-${file.name.replace(/\s+/g, "_")}`);
+  const abs = path.join(root, rel);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
   const buffer = Buffer.from(await file.arrayBuffer());
-  const { error: upErr } = await ctx.supabase.storage.from("contracts").upload(path, buffer, {
-    contentType: file.type || "application/pdf",
-    upsert: false,
+  await fs.writeFile(abs, buffer);
+
+  const storagePath = rel.split(path.sep).join("/");
+  const contract = await prisma.contract.create({
+    data: {
+      clientId: meta.data.client_id,
+      retainerId: meta.data.retainer_id ?? null,
+      storagePath,
+      originalName: file.name,
+      mimeType: file.type || "application/pdf",
+      signedStatus: meta.data.signed_status,
+      signedDate: meta.data.signed_date ? new Date(meta.data.signed_date) : null,
+    },
+    include: { client: true, retainer: true },
   });
-  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-  const { data: pub } = ctx.supabase.storage.from("contracts").getPublicUrl(path);
-  const { data: signed } = await ctx.supabase.storage.from("contracts").createSignedUrl(path, 60 * 60 * 24 * 365);
-
-  const { data: contract, error } = await ctx.supabase
-    .from("contracts")
-    .insert({
-      client_id: meta.data.client_id,
-      retainer_id: meta.data.retainer_id ?? null,
-      storage_path: path,
-      contract_url: signed?.signedUrl ?? pub.publicUrl,
-      signed_status: meta.data.signed_status,
-      signed_date: meta.data.signed_date,
-    })
-    .select("*")
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ contract });
+  return NextResponse.json({
+    contract: {
+      ...serializeContract(contract),
+      clients: { company_name: contract.client.companyName },
+      retainers: contract.retainer ? { name: contract.retainer.name } : null,
+    },
+  });
 }

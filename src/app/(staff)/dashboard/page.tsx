@@ -74,7 +74,7 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-        Could not load dashboard. Check Supabase environment variables and that you are signed in as staff.
+        Could not load dashboard. Confirm you are signed in as staff and that the database is reachable.
       </div>
     );
   }
@@ -106,8 +106,8 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>MRR by retainer</CardTitle>
-            <CardDescription>Top active retainers driving recurring revenue.</CardDescription>
+            <CardTitle>Revenue overview</CardTitle>
+            <CardDescription>Top active retainers by monthly recurring revenue.</CardDescription>
           </CardHeader>
           <CardContent className="h-72">
             {retainerChart?.length ? (

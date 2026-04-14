@@ -1,10 +1,9 @@
 import Link from "next/link";
-import { LayoutDashboard, Users, Repeat, FileText, FileSignature, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Repeat, FileText, FileSignature } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getProfile, isStaffRole } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { signOut } from "@/app/actions/auth";
+import { SignOutButton } from "@/components/sign-out-button";
 
 const links = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -41,22 +40,13 @@ export async function StaffShell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="mt-auto space-y-2 px-2">
           <div className="truncate text-xs text-muted-foreground">{profile.email}</div>
-          <form action={signOut}>
-            <Button type="submit" variant="outline" size="sm" className="w-full gap-2">
-              <LogOut className="h-4 w-4" />
-              Sign out
-            </Button>
-          </form>
+          <SignOutButton variant="outline" size="sm" className="w-full" />
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-border bg-card px-4 py-3 md:hidden">
           <span className="font-semibold">Uppearance OS</span>
-          <form action={signOut}>
-            <Button type="submit" variant="ghost" size="sm">
-              Out
-            </Button>
-          </form>
+          <SignOutButton variant="ghost" size="sm" showIcon={false} label="Out" />
         </header>
         <main className="flex-1 p-4 md:p-8">{children}</main>
       </div>

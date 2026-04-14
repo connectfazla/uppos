@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireStaff } from "@/lib/api-helpers";
+import { prisma } from "@/lib/prisma";
+import { retainerStatusFromApi } from "@/lib/prisma-enums";
+import { serializeRetainer } from "@/lib/serializers";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -18,8 +21,18 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const json = await request.json().catch(() => null);
   const parsed = patchSchema.safeParse(json);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  const body = { ...parsed.data, updated_at: new Date().toISOString() };
-  const { data, error } = await ctx.supabase.from("retainers").update(body).eq("id", id).select("*, retainer_deliverables(*)").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ retainer: data });
+
+  const updated = await prisma.retainer.update({
+    where: { id },
+    data: {
+      ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+      ...(parsed.data.monthly_fee !== undefined ? { monthlyFee: parsed.data.monthly_fee } : {}),
+      ...(parsed.data.start_date !== undefined ? { startDate: new Date(parsed.data.start_date) } : {}),
+      ...(parsed.data.renewal_date !== undefined ? { renewalDate: new Date(parsed.data.renewal_date) } : {}),
+      ...(parsed.data.billing_cycle !== undefined ? { billingCycle: parsed.data.billing_cycle } : {}),
+      ...(parsed.data.status !== undefined ? { status: retainerStatusFromApi(parsed.data.status) } : {}),
+    },
+    include: { deliverables: true },
+  });
+  return NextResponse.json({ retainer: serializeRetainer(updated) });
 }

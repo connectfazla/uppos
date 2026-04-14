@@ -19,7 +19,7 @@
 | Charts          | [Recharts](https://recharts.org/)                                                                                                                         |
 | Data / cache    | [TanStack Query](https://tanstack.com/query)                                                                                                              |
 | Optional state  | [Zustand](https://github.com/pmndrs/zustand) (installed; extend as needed)                                                                                |
-| Database & auth | [Supabase](https://supabase.com/) — PostgreSQL, Auth, Storage                                                                                             |
+| Database & auth | [PostgreSQL](https://www.postgresql.org/) + [Prisma](https://www.prisma.io/) + [NextAuth.js](https://next-auth.js/) (credentials)                         |
 | Validation      | [Zod](https://zod.dev/)                                                                                                                                   |
 
 
@@ -27,8 +27,8 @@
 
 ## Prerequisites
 
-- **Node.js** `>= 18.18.0` (recommended: **20+** for Supabase client support and simpler upgrades to Next.js 15+).
-- A **Supabase** project (URL + anon key; service role only if you add server-only admin scripts).
+- **Node.js** `>= 18.18.0` (recommended: **20+** for Prisma and simpler upgrades to Next.js 15+).
+- **PostgreSQL** reachable from the app (`DATABASE_URL`).
 
 ---
 
@@ -37,43 +37,44 @@
 Copy `.env.example` to `.env.local` and set:
 
 
-| Variable                        | Purpose                                                                              |
-| ------------------------------- | ------------------------------------------------------------------------------------ |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL                                                                 |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon (public) key                                                           |
-| `SUPABASE_SERVICE_ROLE_KEY`     | Optional — only for trusted server scripts (not required for the shipped API routes) |
+| Variable            | Purpose                                                                 |
+| ------------------- | ----------------------------------------------------------------------- |
+| `DATABASE_URL`      | PostgreSQL connection string for Prisma                                 |
+| `NEXTAUTH_SECRET`   | Secret for signing session tokens (long random string)                |
+| `NEXTAUTH_URL`      | Public origin of the app (e.g. `http://localhost:3000` or production) |
+| `CONTRACTS_DIR`     | Optional — directory for uploaded PDFs (default: `./data/contracts`)  |
+| `SEED_ADMIN_PASSWORD` | Optional — password for `prisma db seed` default admin user          |
 
 
 ---
 
-## Database setup (Supabase)
+## Database setup (PostgreSQL + Prisma)
 
-1. In the Supabase SQL editor, run migrations **in order**:
-  - `supabase/migrations/001_uppearance_os.sql` — core schema, RLS, auth → `profiles` trigger, `contracts` storage policies.
-  - `supabase/migrations/002_profiles_staff_update.sql` — allows **admin/team** to update `profiles` (e.g. link a user to a `client_id` for the portal).
-2. Confirm the `**contracts`** storage bucket exists (the migration inserts it; verify under Storage).
-3. **Roles** (`profiles.role`): `admin`, `team`, `client`. New sign-ups default to `team` via the trigger. Promote users as needed, for example:
-  ```sql
-   update public.profiles set role = 'admin' where id = '<auth user uuid>';
-  ```
-4. **Portal users:** set the client organization and role:
-  ```sql
-   update public.profiles
-   set role = 'client', client_id = '<clients.id uuid>'
-   where id = '<auth user uuid>';
-  ```
+1. Create a database and set `DATABASE_URL` in `.env.local` (see `.env.example`).
+2. Apply the schema:
+   ```bash
+   npx prisma migrate deploy
+   ```
+   (For a fresh dev database you can use `npx prisma db push` instead of migrate.)
+3. Create an initial admin user:
+   ```bash
+   npm run db:seed
+   ```
+   Default sign-in: **`admin@example.com`** / **`changeme`** — change the password immediately (set `SEED_ADMIN_PASSWORD` before seeding in production).
+4. **Portal users:** create a `User` with `role = CLIENT` and `clientId` set to the client’s UUID (via Prisma Studio, SQL, or your own admin tooling).
 
 ---
 
 ## Docker / VPS (os.uppcore.tech, port 5858)
 
-Full steps: **[docs/DEPLOYMENT-DOCKER.md](docs/DEPLOYMENT-DOCKER.md)** — Docker Compose, Nginx + TLS, Supabase Cloud vs self-hosted Postgres, firewall, and updates.
+Full steps: **[docs/DEPLOYMENT-DOCKER.md](docs/DEPLOYMENT-DOCKER.md)** — Docker Compose, Nginx + TLS, PostgreSQL, firewall, and updates.
 
 Quick start on the server:
 
 ```bash
 cp .env.production.example .env.production
-# edit .env.production — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+# edit .env.production — DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL
+# run migrations against that database (from CI or the host): npx prisma migrate deploy
 docker compose up -d --build
 # app: http://SERVER_IP:5858  →  put Nginx in front for https://os.uppcore.tech (see deploy/nginx-os.uppcore.tech.conf)
 ```
@@ -124,15 +125,17 @@ If the CLI times out, you can paste components from [ui.shadcn.com](https://ui.s
 
 | Method    | Path                     | Notes                                                  |
 | --------- | ------------------------ | ------------------------------------------------------ |
-| GET, POST | `/api/clients`           | Staff                                                  |
-| PATCH     | `/api/clients/[id]`      | Staff (optional `archived`)                            |
+| GET, POST | `/api/clients`           | Staff; list includes MRR-style monthly value + manager |
+| GET, PATCH | `/api/clients/[id]`     | Staff (detail + optional `archived`, `notes`, manager) |
+| GET       | `/api/staff`             | Staff directory (for assigning account managers)     |
 | GET, POST | `/api/contacts`          | Staff                                                  |
 | GET, POST | `/api/retainers`         | Staff; nested deliverables on create                   |
 | PATCH     | `/api/retainers/[id]`    | Staff                                                  |
 | GET, POST | `/api/invoices`          | GET: staff + client (scoped); syncs overdue/paid state |
 | PATCH     | `/api/invoices/[id]`     | Staff                                                  |
 | POST      | `/api/payments`          | Staff; updates invoice balance / status                |
-| GET, POST | `/api/contracts`         | Staff; POST = multipart PDF upload                     |
+| GET, POST | `/api/contracts`         | Staff; POST = multipart upload (stored on disk)        |
+| GET       | `/api/contracts/[id]/file` | Authenticated file download (staff or owning client) |
 | GET       | `/api/dashboard/metrics` | Staff dashboard aggregates                             |
 | GET       | `/api/client/dashboard`  | Client portal payload (403 if not linked to a client)  |
 
@@ -151,7 +154,7 @@ If the CLI times out, you can paste components from [ui.shadcn.com](https://ui.s
 
 ## Deploying
 
-Build output is standard Next.js. Deploy to [Vercel](https://vercel.com/), a Node host, or Docker; set the same env vars as `.env.example`. Ensure Supabase **Auth redirect URLs** include your production origin.
+Build output is standard Next.js. Deploy to [Vercel](https://vercel.com/), a Node host, or Docker; set the same env vars as `.env.example`. Ensure `NEXTAUTH_URL` matches your public origin.
 
 ---
 

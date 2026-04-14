@@ -1,20 +1,19 @@
 import { getProfile, isStaffRole } from "@/lib/auth";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { Profile } from "@/types/database";
 
-export async function requireUser() {
-  const supabase = await createSupabaseServerClient();
+export async function requireUser(): Promise<{ profile: Profile } | { error: Response }> {
   const profile = await getProfile();
   if (!profile) {
-    return { error: Response.json({ error: "Unauthorized" }, { status: 401 }) } as const;
+    return { error: Response.json({ error: "Unauthorized" }, { status: 401 }) };
   }
-  return { supabase, profile } as const;
+  return { profile };
 }
 
-export async function requireStaff() {
+export async function requireStaff(): Promise<{ profile: Profile } | { error: Response }> {
   const ctx = await requireUser();
   if ("error" in ctx) return ctx;
   if (!isStaffRole(ctx.profile.role)) {
-    return { error: Response.json({ error: "Forbidden" }, { status: 403 }) } as const;
+    return { error: Response.json({ error: "Forbidden" }, { status: 403 }) };
   }
   return ctx;
 }
