@@ -130,6 +130,8 @@ This binds Postgres to **`127.0.0.1:5432`** on the host. It does **not** replace
 
 Certbot will add `listen 443 ssl` and certificate paths. After that, users hit **https://os.uppcore.tech** and Nginx proxies to **`127.0.0.1:5858`**.
 
+**Important after Certbot:** open `/etc/nginx/sites-enabled/os.uppcore.tech` (or the file Certbot edited) and confirm the **`server { listen 443 ssl ... }`** block contains **`location /`** with **`proxy_pass http://127.0.0.1:5858;`**. Certbot sometimes duplicates the server block but leaves the HTTPS `location /` empty or pointing elsewhere — that causes **502**.
+
 ---
 
 ## 5. Firewall
@@ -161,10 +163,31 @@ docker compose up -d
 
 | Issue | What to check |
 |--------|----------------|
-| 502 from Nginx | `docker compose ps`, `docker compose logs web`, confirm proxy to `127.0.0.1:5858`. |
+| **502 Bad Gateway** | See **502 checklist** below. |
 | Auth / session errors | Supabase URL and anon key; redirect URLs include `https://os.uppcore.tech`. |
 | Storage upload fails | RLS policies; bucket `contracts`; service role only if your API uses it. |
-| Build fails on VPS | Prefer building on CI or a dev machine with Node 20, then `docker save` / registry push — or ensure enough RAM for `npm ci` + `next build`. |
+| Build fails on VPS | Prefer building on CI or a dev machine with Node 20, then `docker save` / registry push — or ensure enough RAM for `npm install` + `next build`. |
+
+### 502 Bad Gateway (Nginx → Docker)
+
+Run on the VPS:
+
+```bash
+# 1) Is the app up and bound to 5858?
+cd ~/uppos && docker compose ps
+curl -sS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:5858/login
+
+# 2) Nginx upstream + errors (look for connect() failed, Connection refused, upstream prematurely closed)
+sudo grep -n proxy_pass /etc/nginx/sites-enabled/*
+sudo tail -40 /var/log/nginx/error.log
+```
+
+**Fixes that usually resolve 502:**
+
+1. **Upstream not running** — `docker compose up -d` in `~/uppos`, then `docker compose logs web --tail=80`.
+2. **Wrong host in `proxy_pass`** — use **`http://127.0.0.1:5858`**, not `http://localhost:5858` (IPv6 `::1` vs Docker on IPv4).
+3. **HTTPS block missing `proxy_pass`** — after Certbot, the `listen 443 ssl` server must still proxy to `127.0.0.1:5858` (edit the site file, then `sudo nginx -t && sudo systemctl reload nginx`).
+4. **Unconditional WebSocket headers** — avoid `proxy_set_header Connection "upgrade";` for every request; use the repo’s updated `deploy/nginx-os.uppcore.tech.conf` (no forced upgrade) or pull latest and re-copy the site file.
 
 ---
 
