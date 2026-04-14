@@ -73,6 +73,8 @@ In Supabase (**Authentication → URL configuration**), add:
 
 ## 3. Build and run the app (port 5858)
 
+The `Dockerfile` uses **`npm install`** (not `npm ci`) in the dependency stage so builds stay reliable across npm versions in `node:*-alpine` images; the committed **`package-lock.json`** still pins versions.
+
 From the repo root (where `docker-compose.yml` lives):
 
 ```bash

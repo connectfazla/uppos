@@ -5,7 +5,8 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json package-lock.json* ./
-RUN npm ci
+# Prefer lockfile; `npm ci` can fail on some npm versions with nested deps (e.g. picomatch 2 vs 4).
+RUN npm install --no-audit --no-fund
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
