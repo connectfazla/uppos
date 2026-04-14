@@ -1,11 +1,12 @@
 # Uppearance OS — production image (Next.js standalone)
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
 FROM base AS deps
 COPY package.json package-lock.json* ./
-# Prefer lockfile; `npm ci` can fail on some npm versions with nested deps (e.g. picomatch 2 vs 4).
+# postinstall runs `prisma generate` — schema must exist before npm install.
+COPY prisma ./prisma
 RUN npm install --no-audit --no-fund
 
 FROM base AS builder
