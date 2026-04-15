@@ -18,7 +18,7 @@ function hasSessionCookie(req: NextRequest) {
 }
 
 function isPublicPath(pathname: string) {
-  if (pathname === "/login" || pathname === "/") return true;
+  if (pathname === "/login" || pathname === "/register" || pathname === "/") return true;
   if (pathname.startsWith("/api/auth")) return true;
   return false;
 }

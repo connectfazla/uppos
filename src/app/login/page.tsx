@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,6 +74,12 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}
             </Button>
+            <div className="text-center text-sm text-muted-foreground">
+              New here?{" "}
+              <Link href="/register" className="text-foreground underline underline-offset-4">
+                Create an account
+              </Link>
+            </div>
           </form>
         </CardContent>
       </Card>

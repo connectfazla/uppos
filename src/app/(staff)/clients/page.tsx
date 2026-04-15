@@ -62,6 +62,8 @@ export default function ClientsPage() {
   const [open, setOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ClientStatus | "all">("all");
   const [company, setCompany] = useState("");
   const [status, setStatus] = useState<ClientStatus>("lead");
   const [createManagerId, setCreateManagerId] = useState<string>("");
@@ -165,6 +167,43 @@ export default function ClientsPage() {
     onError: () => toast.error("Could not update manager"),
   });
 
+  const updateStatus = useMutation({
+    mutationFn: async (next: ClientStatus) => {
+      const res = await fetch(`/api/clients/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
+      if (!res.ok) throw new Error();
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success("Status updated");
+      qc.invalidateQueries({ queryKey: ["client", selectedId] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+    onError: () => toast.error("Could not update status"),
+  });
+
+  const archiveClient = useMutation({
+    mutationFn: async (archived: boolean) => {
+      const res = await fetch(`/api/clients/${selectedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived }),
+      });
+      if (!res.ok) throw new Error();
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success("Updated");
+      qc.invalidateQueries({ queryKey: ["client", selectedId] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      setSheetOpen(false);
+    },
+    onError: () => toast.error("Could not update"),
+  });
+
   const addContact = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/contacts", {
@@ -195,6 +234,11 @@ export default function ClientsPage() {
   }
 
   const row = data?.clients.find((c) => c.id === selectedId);
+  const filtered = (data?.clients ?? []).filter((c) => {
+    const matchesQ = !q.trim() || c.company_name.toLowerCase().includes(q.trim().toLowerCase());
+    const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+    return matchesQ && matchesStatus;
+  });
 
   return (
     <div className="space-y-6">
@@ -263,6 +307,25 @@ export default function ClientsPage() {
           <CardDescription>Click a row for overview, retainers, invoices, contacts, and notes.</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-wrap gap-3">
+            <div className="min-w-[220px] flex-1">
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search company…" />
+            </div>
+            <div className="min-w-[180px]">
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ClientStatus | "all")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="lead">Lead</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="paused">Paused</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -279,7 +342,7 @@ export default function ClientsPage() {
                   <TableCell colSpan={5}>Loading…</TableCell>
                 </TableRow>
               )}
-              {(data?.clients ?? []).map((c) => (
+              {filtered.map((c) => (
                 <TableRow key={c.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openClient(c.id)}>
                   <TableCell className="font-medium">{c.company_name}</TableCell>
                   <TableCell>
@@ -339,6 +402,32 @@ export default function ClientsPage() {
                       {detail.client.status}
                     </Badge>
                     <span className="text-sm text-muted-foreground">Since {formatDate(detail.client.created_at)}</span>
+                  </div>
+                  <div className="grid gap-3 rounded-lg border border-border p-3">
+                    <div className="text-sm font-medium">Quick actions</div>
+                    <div className="flex flex-wrap gap-2">
+                      <div className="min-w-[180px] flex-1">
+                        <Select value={detail.client.status} onValueChange={(v) => updateStatus.mutate(v as ClientStatus)}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="lead">Lead</SelectItem>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="paused">Paused</SelectItem>
+                            <SelectItem value="inactive">Inactive</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={archiveClient.isPending}
+                        onClick={() => archiveClient.mutate(!detail.client.archived_at)}
+                      >
+                        {detail.client.archived_at ? "Unarchive" : "Archive"}
+                      </Button>
+                    </div>
                   </div>
                   <div className="grid gap-2 text-sm">
                     <div className="flex justify-between">
