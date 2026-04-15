@@ -152,6 +152,13 @@ If the CLI times out, you can paste components from [ui.shadcn.com](https://ui.s
 
 ---
 
+## Troubleshooting auth (Docker / VPS)
+
+- **`/api/auth/error?error=Configuration`**: Usually meant **no `NEXTAUTH_SECRET` in the Edge middleware bundle** when using `withAuth`. This repo uses **cookie-based middleware** instead, but you must still set **`NEXTAUTH_SECRET`** and **`NEXTAUTH_URL`** in `.env.production` so **Node** (login, `getServerSession`, JWT) can sign and verify sessions. Generate a secret with `openssl rand -base64 32`.
+- **Browser console** (`Receiving end does not exist`, `content.js`): Almost always a **browser extension**, not the app—safe to ignore if the site loads.
+
+---
+
 ## Deploying
 
 Build output is standard Next.js. Deploy to [Vercel](https://vercel.com/), a Node host, or Docker; set the same env vars as `.env.example`. Ensure `NEXTAUTH_URL` matches your public origin.
